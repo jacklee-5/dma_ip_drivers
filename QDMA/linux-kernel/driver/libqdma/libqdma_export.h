@@ -464,6 +464,8 @@ struct qdma_dev_conf {
 	char bar_num_user;
 	/** AXI Bridge Master(bypass bar) */
 	char bar_num_bypass;
+	/** HBM BAR for P2P provider mode (-1 if not configured) */
+	char bar_num_hbm;
 	/** queue base for this function */
 	int qsets_base;
 	/** device index */

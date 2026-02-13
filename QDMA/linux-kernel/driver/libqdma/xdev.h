@@ -334,6 +334,16 @@ struct xlnx_dma_dev {
 	struct qdma_hw_access hw;
 	/* qdma_hw_version_info structure */
 	struct qdma_hw_version_info version_info;
+
+	/* P2P HBM Provider Support (V80) */
+	/** P2P provider mode enabled */
+	bool p2p_enabled;
+	/** BAR number mapped to HBM (-1 if not configured) */
+	int hbm_bar_num;
+	/** HBM BAR physical base address */
+	resource_size_t hbm_bar_start;
+	/** HBM BAR size in bytes */
+	resource_size_t hbm_bar_len;
 };
 
 struct qdma_vf_info {

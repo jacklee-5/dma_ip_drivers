@@ -32,6 +32,7 @@
 
 #include "nl.h"
 #include "libqdma/xdev.h"
+#include "libqdma/qdma_p2p.h"
 
 /* include early, to verify it depends only on the headers above */
 #include "version.h"
@@ -57,6 +58,10 @@ MODULE_PARM_DESC(config_bar, "specify the config bar number, dflt is 0, format i
 static char master_pf[500] = {0};
 module_param_string(master_pf, master_pf, sizeof(master_pf), 0);
 MODULE_PARM_DESC(master_pf, "specify the master_pf, dflt is 0, format is \"<bus_num>:<master_pf>\" and multiple comma separated entries can be specified");
+
+static char hbm_bar[500] = {0};
+module_param_string(hbm_bar, hbm_bar, sizeof(hbm_bar), 0);
+MODULE_PARM_DESC(hbm_bar, "HBM BAR for P2P provider mode (V80), format is \"<bus_num>:<pf_num>:<bar_num>\" and multiple comma separated entries can be specified");
 
 static unsigned int num_threads;
 module_param(num_threads, uint, 0644);
@@ -796,9 +801,39 @@ static ssize_t set_qmax(struct device *dev,
 }
 #endif
 
+/*****************************************************************************/
+/**
+ * show_p2p_status() - handler to show P2P provider status
+ *
+ * @dev:    PCIe device handle
+ * @attr:   p2p_status attribute
+ * @buf:    buffer to hold the status string
+ *
+ * Handler function to show P2P HBM provider status
+ *
+ * Return:  Returns length of the buffer on success, <0 on failure
+ *****************************************************************************/
+static ssize_t show_p2p_status(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct xlnx_pci_dev *xpdev;
+	struct xlnx_dma_dev *xdev;
+
+	xpdev = (struct xlnx_pci_dev *)dev_get_drvdata(dev);
+	if (!xpdev)
+		return -EINVAL;
+
+	xdev = (struct xlnx_dma_dev *)(xpdev->dev_hndl);
+	if (!xdev)
+		return -EINVAL;
+
+	return qdma_p2p_dump_info(xdev, buf, PAGE_SIZE);
+}
+
 static DEVICE_ATTR(qmax, S_IWUSR | S_IRUGO, show_qmax, set_qmax);
 static DEVICE_ATTR(intr_rngsz, S_IWUSR | S_IRUGO,
 			show_intr_rngsz, set_intr_rngsz);
+static DEVICE_ATTR(p2p_status, S_IRUGO, show_p2p_status, NULL);
 #ifndef __QDMA_VF__
 static DEVICE_ATTR(buf_sz, S_IWUSR | S_IRUGO,
 		show_c2h_buf_sz, set_c2h_buf_sz);
@@ -815,12 +850,14 @@ static DEVICE_ATTR(cmpl_status_acc, S_IWUSR | S_IRUGO,
 static struct attribute *pci_device_attrs[] = {
 		&dev_attr_qmax.attr,
 		&dev_attr_intr_rngsz.attr,
+		&dev_attr_p2p_status.attr,
 		NULL,
 };
 
 static struct attribute *pci_master_device_attrs[] = {
 		&dev_attr_qmax.attr,
 		&dev_attr_intr_rngsz.attr,
+		&dev_attr_p2p_status.attr,
 #ifndef __QDMA_VF__
 		&dev_attr_buf_sz.attr,
 		&dev_attr_glbl_rng_sz.attr,
@@ -959,7 +996,7 @@ static bool is_first_pfdev(u8 bus_number)
  *
  * @return	device mode
  *****************************************************************************/
-static u8 extract_mod_param(struct pci_dev *pdev,
+static int extract_mod_param(struct pci_dev *pdev,
 		enum qdma_drv_mod_param_type param_type)
 {
 	char p[600];
@@ -985,6 +1022,10 @@ static u8 extract_mod_param(struct pci_dev *pdev,
 		if (master_pf[0] == '\0')
 			return is_first_pfdev(pdev->bus->number);
 		strncpy(p, master_pf, sizeof(p) - 1);
+	} else if (param_type == HBM_BAR) {
+		if (hbm_bar[0] == '\0')
+			return -1; /* HBM BAR not configured */
+		strncpy(p, hbm_bar, sizeof(p) - 1);
 	} else {
 		pr_err("Invalid module param type received\n");
 		return -EINVAL;
@@ -1583,8 +1624,13 @@ static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	conf.bar_num_config = -1;
 	conf.bar_num_user = -1;
 	conf.bar_num_bypass = -1;
+	conf.bar_num_hbm = -1;
 
 	conf.bar_num_config = extract_mod_param(pdev, CONFIG_BAR);
+	conf.bar_num_hbm = extract_mod_param(pdev, HBM_BAR);
+	if (conf.bar_num_hbm >= 0)
+		pr_info("%s: P2P HBM BAR configured: %d\n",
+			dev_name(&pdev->dev), conf.bar_num_hbm);
 	conf.qsets_max = 0;
 	conf.qsets_base = -1;
 	conf.msix_qvec_max = 32;
