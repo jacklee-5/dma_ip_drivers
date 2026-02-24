@@ -47,6 +47,8 @@ enum qdma_drv_mod_param_type {
 	CONFIG_BAR,
 	/** @MASTER_PF : Master PF mod param */
 	MASTER_PF,
+	/** @HBM_BAR : HBM BAR for P2P provider mode */
+	HBM_BAR,
 };
 
 /**

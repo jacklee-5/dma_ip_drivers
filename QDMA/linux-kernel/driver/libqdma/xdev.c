@@ -39,6 +39,7 @@
 #include "qdma_intr.h"
 #include "qdma_resource_mgmt.h"
 #include "qdma_access_common.h"
+#include "qdma_p2p.h"
 #ifdef DEBUGFS
 #include "qdma_debugfs_dev.h"
 #endif
@@ -1192,6 +1193,17 @@ int qdma_device_open(const char *mod_name, struct qdma_dev_conf *conf,
 	dbgfs_dev_init(xdev);
 #endif
 
+	/* Initialize P2P provider if HBM BAR is configured */
+	if (conf->bar_num_hbm >= 0) {
+		rv = qdma_p2p_init(xdev, conf->bar_num_hbm);
+		if (rv < 0) {
+			pr_warn("P2P init failed (%d), continuing without P2P\n",
+				rv);
+			/* Non-fatal - continue without P2P */
+			rv = 0;
+		}
+	}
+
 	*dev_hndl = (unsigned long)xdev;
 
 	return rv;
@@ -1248,6 +1260,9 @@ int qdma_device_close(struct pci_dev *pdev, unsigned long dev_hndl)
 	}
 
 	qdma_device_offline(pdev, dev_hndl, XDEV_FLR_INACTIVE);
+
+	/* Cleanup P2P provider */
+	qdma_p2p_cleanup(xdev);
 
 #ifdef DEBUGFS
 	/** time to clean debugfs */
